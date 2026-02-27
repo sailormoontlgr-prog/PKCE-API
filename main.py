@@ -5,7 +5,7 @@ import secrets
 
 app = Flask(__name__)
 
-API_KEY = "change_moi_secret_key_ici"
+API_KEY = "caca"
 
 @app.route('/pkce', methods=['GET'])
 def generate_pkce():
