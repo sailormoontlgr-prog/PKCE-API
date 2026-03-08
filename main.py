@@ -3,9 +3,9 @@ import hashlib
 import base64
 import secrets
 import random
+import os
 
 app = Flask(__name__)
-
 API_KEY = "caca"
 
 DEVICES = [
@@ -21,21 +21,36 @@ CLIENTS = [
     "8KZt4ch3WEvOmslO1Zh8"
 ]
 
+FILE = '/tmp/codes.txt'
+
+# ─── Génération des codes ───────────────────────────────────────────
+def generate_codes():
+    codes = [str(i).zfill(5) for i in range(100000)]
+    random.shuffle(codes)
+    with open(FILE, 'w') as f:
+        f.write('\n'.join(codes))
+    print("✅ 100 000 codes générés dans /tmp/codes.txt")
+
+# Génère les codes au démarrage si le fichier n'existe pas
+if not os.path.exists(FILE) or os.path.getsize(FILE) == 0:
+    print("📦 Génération des codes au démarrage...")
+    generate_codes()
+
+# ─── Auth ────────────────────────────────────────────────────────────
 def check_api_key():
     if request.headers.get('X-API-Key') != API_KEY:
         return jsonify({'error': 'Unauthorized'}), 401
     return None
 
+# ─── Routes existantes ───────────────────────────────────────────────
 @app.route('/pkce', methods=['GET'])
 def generate_pkce():
     auth = check_api_key()
     if auth: return auth
-
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
     code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode('utf-8')).digest()
     ).decode('utf-8').rstrip('=')
-
     return jsonify({
         'code_verifier': code_verifier,
         'code_challenge': code_challenge,
@@ -47,7 +62,6 @@ def generate_pkce():
 def generate_device():
     auth = check_api_key()
     if auth: return auth
-
     return jsonify({
         'device': random.choice(DEVICES),
         'client': random.choice(CLIENTS)
@@ -57,12 +71,10 @@ def generate_device():
 def generate_all():
     auth = check_api_key()
     if auth: return auth
-
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
     code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode('utf-8')).digest()
     ).decode('utf-8').rstrip('=')
-
     return jsonify({
         'code_verifier': code_verifier,
         'code_challenge': code_challenge,
@@ -72,6 +84,46 @@ def generate_all():
         'client': random.choice(CLIENTS)
     })
 
+# ─── Nouvelles routes codes ──────────────────────────────────────────
+@app.route('/code', methods=['GET'])
+def get_code():
+    auth = check_api_key()
+    if auth: return auth
+
+    with open(FILE, 'r') as f:
+        content = f.read().strip()
+
+    if not content:
+        return jsonify({'error': 'Plus aucun code disponible.'}), 410
+
+    lines = content.split('\n')
+    code = lines.pop(0)
+
+    with open(FILE, 'w') as f:
+        f.write('\n'.join(lines))
+
+    return jsonify({
+        'code': code,
+        'restants': len(lines)
+    })
+
+@app.route('/code/reset', methods=['POST'])
+def reset_codes():
+    auth = check_api_key()
+    if auth: return auth
+    generate_codes()
+    return jsonify({'message': '✅ Codes régénérés !', 'total': 100000})
+
+@app.route('/code/count', methods=['GET'])
+def count_codes():
+    auth = check_api_key()
+    if auth: return auth
+    with open(FILE, 'r') as f:
+        content = f.read().strip()
+    count = len(content.split('\n')) if content else 0
+    return jsonify({'restants': count})
+
+# ─── Health ──────────────────────────────────────────────────────────
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
